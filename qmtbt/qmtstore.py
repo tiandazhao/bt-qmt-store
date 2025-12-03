@@ -1,8 +1,8 @@
 import random
-from xtquant import xtdata, xttrader, xttype
 from backtrader.metabase import MetaParams
 import backtrader as bt
 import pandas as pd
+from .dal import DataAccessLayer
 
 
 class MetaSingleton(MetaParams):
@@ -47,16 +47,22 @@ class QMTStore(object, metaclass=MetaSingleton):
         self.code_list = []
         self.last_tick = None
         self.token = None
+        self.dal = DataAccessLayer()
 
     def _get_benchmark(self):
-        xtdata.download_history_data(stock_code='000300.SH', period='1d', start_time='2022-01-01', end_time='2023-01-01', dividend_type='none')
+        try:
+            from xtquant import xtdata
+            xtdata.download_history_data(stock_code='000300.SH', period='1d', start_time='2022-01-01', end_time='2023-01-01', dividend_type='none')
+        except Exception:
+            pass
         pass
     
     def connect(self, mini_qmt_path, account):
 
         try:
+            from xtquant import xtdata, xttrader, xttype
             xtdata.connect()
-        except:
+        except Exception:
             return -1
 
         session_id = int(random.randint(100000, 999999))
@@ -107,20 +113,21 @@ class QMTStore(object, metaclass=MetaSingleton):
             end_time: 终止日期
 
         """
-        if download:
-            xtdata.download_history_data(stock_code=symbol, period=period, start_time=start_time, end_time=end_time)
-        res = xtdata.get_market_data_ex(stock_list=[symbol], period=period, start_time=start_time, end_time=end_time, count=count, dividend_type=dividend_type)
-        res = res[symbol]
+        res = self.dal.get_history_data(symbol=symbol, period=period, start_time=start_time, end_time=end_time, count=count, dividend_type=dividend_type, fallback_to_xtquant=download)
         if period == 'tick':
             res = self._auto_expand_array_columns(res)
         return res
     
     def _subscribe_live(self, symbol, period, callback, start_time='', end_time=''):
-
+        from xtquant import xtdata
         seq = xtdata.subscribe_quote(stock_code=symbol, period=period, start_time=start_time, end_time=end_time, callback=callback)
 
         return seq
 
     
     def _unsubscribe_live(self, seq):
-        xtdata.unsubscribe_quote(seq)
+        try:
+            from xtquant import xtdata
+            xtdata.unsubscribe_quote(seq)
+        except Exception:
+            pass

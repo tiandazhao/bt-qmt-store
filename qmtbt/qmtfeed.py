@@ -32,8 +32,9 @@ class QMTFeed(DataBase, metaclass=MetaQMTFeed):
     lines = ('lastClose', 'amount', 'pvolume', 'stockStatus', 'openInt', 'lastSettlementPrice', 'settlementPrice', 'transactionNum', 'askPrice1', 'askPrice2', 'askPrice3', 'askPrice4', 'askPrice5', 'bidPrice1', 'bidPrice2', 'bidPrice3', 'bidPrice4', 'bidPrice5', 'askVol1', 'askVol2', 'askVol3', 'askVol4', 'askVol5', 'bidVol1', 'bidVol2', 'bidVol3', 'bidVol4', 'bidVol5', 'openInterest', 'dr', 'totaldr', 'preClose', 'suspendFlag', 'settelementPrice', 'pe' )
 
     params = (
-        ('live', False),  # only historical download
-        ('timeframe', bt.TimeFrame.Ticks)
+        ('live', False),
+        ('timeframe', bt.TimeFrame.Ticks),
+        ('fallback', True),  # allow xtquant fallback when cache miss
     )
 
     def __init__(self, **kwargs):
@@ -124,7 +125,7 @@ class QMTFeed(DataBase, metaclass=MetaQMTFeed):
         start_time = self._format_datetime(self.p.fromdate, period)
         end_time = self._format_datetime(self.p.todate, period)
 
-        res = self.store._fetch_history(symbol=self.p.dataname, period=period, start_time=start_time, end_time=end_time)
+        res = self.store._fetch_history(symbol=self.p.dataname, period=period, start_time=start_time, end_time=end_time, download=self.p.fallback)
         result = res.to_dict('records')
         for item in result:
             if item.get('close') != 0 and item.get('lastPrice') != 0:
@@ -179,4 +180,3 @@ class QMTFeed(DataBase, metaclass=MetaQMTFeed):
     # thread = threading.Thread(target=my_function)
     # thread.daemon = True  # 设置为守护线程，这样主线程结束时，子线程也会结束
     # thread.start()
-
