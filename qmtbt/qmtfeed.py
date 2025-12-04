@@ -37,6 +37,8 @@ class QMTFeed(DataBase, metaclass=MetaQMTFeed):
         ('fallback', True),  # allow xtquant fallback when cache miss
     )
 
+    plotlines = dict(volume=dict(_name='成交量'))
+
     def __init__(self, **kwargs):
         self._timeframe = self.p.timeframe
         self._compression = 1
@@ -75,19 +77,15 @@ class QMTFeed(DataBase, metaclass=MetaQMTFeed):
         return bt.date2num(dtime)
 
     def _load_current(self, current):
-        for key in current.keys():   
-                try: 
-                    value = current[key]
-                    if key == 'time':
-                        self.lines.datetime[0] = self._get_datetime(value)
-                    elif key == 'lastPrice' and self.p.timeframe == bt.TimeFrame.Ticks:
-                        self.lines.close[0] = value
-                    else:
-                        attr = getattr(self.lines, key)
-                        attr[0] = value
-                except Exception as e:
-                    print(e)
-                    pass
+        for key in current.keys():
+            value = current[key]
+            if key == 'time':
+                self.lines.datetime[0] = self._get_datetime(value)
+            elif key == 'lastPrice' and self.p.timeframe == bt.TimeFrame.Ticks:
+                self.lines.close[0] = value
+            else:
+                if hasattr(self.lines, key):
+                    getattr(self.lines, key)[0] = value
         # print(current, 'current')
         self.put_notification(int(random.randint(100000, 999999)))
 
@@ -128,15 +126,21 @@ class QMTFeed(DataBase, metaclass=MetaQMTFeed):
         res = self.store._fetch_history(symbol=self.p.dataname, period=period, start_time=start_time, end_time=end_time, download=self.p.fallback)
         result = res.to_dict('records')
         for item in result:
-            if item.get('close') != 0 and item.get('lastPrice') != 0:
-                self._data.append(item)
+            close = item.get('close')
+            last_price = item.get('lastPrice')
+            if period == 'tick':
+                if last_price is not None and last_price != 0:
+                    self._data.append(item)
+            else:
+                if close is not None and close != 0:
+                    self._data.append(item)
 
     def _live_data(self, period):
 
         start_time = self._format_datetime(self.p.fromdate, period)
 
         def on_data(res):
-            print(self.lines.datetime)
+            pass
             # current = res[self.p.dataname][0]
             # if self._get_datetime(current['time']) == self.lines.datetime[0]:
             #     self._load_current(current)

@@ -11,12 +11,10 @@ try:
 except Exception:
     QMTBroker = None
     QMTOrder = None
-from .dal import DataAccessLayer
 
 __all__ = [
     'QMTStore',
     'QMTFeed',
     'QMTBroker',
     'QMTOrder',
-    'DataAccessLayer',
 ]
