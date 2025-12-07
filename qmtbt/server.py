@@ -426,6 +426,30 @@ def status():
     log_response('/status', source='internal', records=[], extra=result)
     return jsonify(result)
 
+@app.get('/index_weight')
+def index_weight():
+    index_code = request.args.get('index_code')
+    log_request('/index_weight', {'index_code': index_code})
+    if not index_code:
+        return jsonify({'ok': False, 'error': 'index_code is required'}), 400
+    
+    try:
+        from xtquant import xtdata
+        ensure_xtdata()
+        weights = xtdata.get_index_weight(index_code)
+        if not weights:
+            logger.info(f"index_weight locally missing, downloading... index_code={index_code}")
+            xtdata.download_index_weight()
+            weights = xtdata.get_index_weight(index_code)
+            
+        if weights is None:
+            weights = {}
+        log_response('/index_weight', source='xtquant', records=list(weights.keys()), extra={'count': len(weights)})
+        return jsonify({'ok': True, 'index_code': index_code, 'weights': weights})
+    except Exception as e:
+        logger.error(f"/index_weight error={str(e)}")
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
 def run(host: str = '0.0.0.0', port: int = 8000):
     app.run(host=host, port=port)
 
