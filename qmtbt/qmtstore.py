@@ -1,8 +1,8 @@
-import random
+import os
+import requests
 from backtrader.metabase import MetaParams
 import backtrader as bt
 import pandas as pd
-from .dal import DataAccessLayer
 
 
 class MetaSingleton(MetaParams):
@@ -25,6 +25,12 @@ class QMTStore(object, metaclass=MetaSingleton):
     def getdata(self, *args, **kwargs): 
         '''Returns ``DataCls`` with args, kwargs'''
         kwargs['store'] = self
+        if not hasattr(self.__class__, 'DataCls') or self.__class__.DataCls is None:
+            try:
+                from .qmtfeed import QMTFeed
+                self.__class__.DataCls = QMTFeed
+            except Exception:
+                raise AttributeError('DataCls is not registered')
         qmtFeed = self.__class__.DataCls(*args, **kwargs)
         return qmtFeed
     
@@ -41,47 +47,10 @@ class QMTStore(object, metaclass=MetaSingleton):
         '''Returns broker with *args, **kwargs from registered ``BrokerCls``'''
         return self.__class__.BrokerCls(*args, **kwargs)
     
-    def __init__(self):
+    def __init__(self, server_url=None, **kwargs):
+        self.server_url = server_url or os.getenv('QMTBT_SERVER_URL', 'http://192.168.100.110:8000')
 
-        self.mini_qmt_path = ''
-        self.code_list = []
-        self.last_tick = None
-        self.token = None
-        self.dal = DataAccessLayer()
-
-    def _get_benchmark(self):
-        try:
-            from xtquant import xtdata
-            xtdata.download_history_data(stock_code='000300.SH', period='1d', start_time='2022-01-01', end_time='2023-01-01', dividend_type='none')
-        except Exception:
-            pass
-        pass
-    
-    def connect(self, mini_qmt_path, account):
-
-        try:
-            from xtquant import xtdata, xttrader, xttype
-            xtdata.connect()
-        except Exception:
-            return -1
-
-        session_id = int(random.randint(100000, 999999))
-        xt_trader = xttrader.XtQuantTrader(mini_qmt_path, session_id)
-
-        xt_trader.start()
-
-        connect_result = xt_trader.connect()
-
-        if connect_result == 0:
-            print('连接成功')
-
-            self.stock_account = xttype.StockAccount(account)
-
-            xt_trader.subscribe(self.stock_account)
-
-            self.xt_trader = xt_trader
-        
-        return connect_result
+    # live subscribe helpers used by QMTFeed
 
     def _auto_expand_array_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -104,19 +73,41 @@ class QMTStore(object, metaclass=MetaSingleton):
 
     def _fetch_history(self, symbol, period, start_time='', end_time='', count=-1, dividend_type='none', download=True):
         """
-        获取历史数据
-        
+        通过 HTTP 从 server.py 提供的服务获取历史数据。
+
         参数：
             symbol: 标的代码
-            period: 周期
-            start_time: 起始日期
-            end_time: 终止日期
-
+            period: 周期 ('1d'/'1m'/'tick')
+            start_time: 起始日期字符串（按 period 规则格式化）
+            end_time: 结束日期字符串（按 period 规则格式化）
+            count: 返回数量限制，-1 表示不限制
+            dividend_type: 复权类型
+            download: 是否允许服务端回退到 xtquant 下载缺失数据（映射为 fallback）
         """
-        res = self.dal.get_history_data(symbol=symbol, period=period, start_time=start_time, end_time=end_time, count=count, dividend_type=dividend_type, fallback_to_xtquant=download)
-        if period == 'tick':
-            res = self._auto_expand_array_columns(res)
-        return res
+        params = {
+            'symbol': symbol,
+            'period': period,
+            'start_time': start_time or '',
+            'end_time': end_time or '',
+            'count': str(count if count is not None else -1),
+            'dividend_type': dividend_type or 'none',
+            'fallback': 'true' if download else 'false',
+        }
+        url = self.server_url.rstrip('/') + '/history'
+
+        try:
+            resp = requests.get(url, params=params, timeout=10)
+            resp.raise_for_status()
+            payload = resp.json()
+        except Exception:
+            # 请求失败时返回空 DataFrame
+            return pd.DataFrame()
+
+        records = payload.get('records', [])
+        df = pd.DataFrame(records)
+        if period == 'tick' and not df.empty:
+            df = self._auto_expand_array_columns(df)
+        return df
     
     def _subscribe_live(self, symbol, period, callback, start_time='', end_time=''):
         from xtquant import xtdata
