@@ -6,7 +6,7 @@ def main():
     # 连接到 RPC 服务
     # 如果运行在远程机器，请将 'localhost' 替换为服务器 IP
     print("正在连接到 XtQuant RPC 服务...")
-    conn = rpyc.connect("localhost", 18812)
+    conn = rpyc.connect("192.168.100.110", 18812)
     print("连接成功！")
     
     # 动态获取远程模块

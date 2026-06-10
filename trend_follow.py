@@ -7,6 +7,7 @@ matplotlib.use('Agg')
 from matplotlib import rcParams
 rcParams['font.sans-serif'] = ['PingFang SC', 'Hiragino Sans GB', 'Arial Unicode MS', 'Microsoft YaHei', 'SimHei']
 rcParams['axes.unicode_minus'] = False
+import requests
 
 class BuySellCN(bt.observers.BuySell):
     plotlines = dict(buy=dict(_name='买入'), sell=dict(_name='卖出'))
@@ -87,11 +88,19 @@ class TrendFollowStrategy(bt.Strategy):
 if __name__ == '__main__':
     server_url = os.getenv('QMTBT_SERVER_URL')
     store = QMTStore(server_url=server_url) if server_url else QMTStore()
+    index_code = os.getenv('INDEX_CODE', '000300.SH')
+    code_list = None
     try:
-        from xtquant import xtdata
-        code_list = xtdata.get_stock_list_in_sector('沪深300')
+        url = store.server_url.rstrip('/') + '/index_weight'
+        resp = requests.get(url, params={'index_code': index_code}, timeout=10)
+        payload = resp.json()
+        if payload.get('ok') and isinstance(payload.get('weights'), dict):
+            weights = payload.get('weights')
+            code_list = list(weights.keys())
     except Exception:
-        code_list = ['000001.SZ', '600000.SH', '600519.SH']
+        pass
+    if not code_list:
+        raise RuntimeError('未能通过远程接口获取指数成分股，请检查 /index_weight 服务是否可用')
 
     datas = store.getdatas(code_list=code_list, timeframe=bt.TimeFrame.Days, fromdate=datetime(2022, 7, 1))
 
